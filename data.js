@@ -24,7 +24,7 @@
   // 1.한자읽기 복원 데이터 기반 JLPT N2 어휘 DB (예문 1개·품사·기출태그·유의어·문법확장 필드 포함)
   const VOCAB_DB = [
     {
-      {
+      
   id: 1,
   type: "vocab",
   category: "한자읽기",
