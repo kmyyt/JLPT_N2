@@ -156,7 +156,7 @@
 
     let typeLabel = "표기/읽기 → 뜻 맞히기";
     let promptMain = targetWord.word;
-    let promptSub = `읽기: ${targetWord.kana}`;
+    let promptSub = targetWord.kana ? `읽기: ${targetWord.kana}` : "";
     let correctValue = targetWord.meaning;
 
     if (qType === "word") {
@@ -167,7 +167,7 @@
     } else if (qType === "pos") {
       typeLabel = "예문/문맥 → 품사 맞히기";
       promptMain = targetWord.word;
-      promptSub = targetWord.example || targetWord.kana;
+      promptSub = targetWord.example || (targetWord.kana ? `읽기: ${targetWord.kana}` : "");
       correctValue = targetWord.pos || "명사";
     } else if (qType === "synonym") {
       typeLabel = "유의어·관련 표현 맞히기";
@@ -249,14 +249,22 @@
     const subEl = document.getElementById("mcq-question-sub");
     const hiraganaOnly = isHiraganaOnly(q.word.word);
 
+    // 1. 한자 표기는 항상 보이도록 유지
     if (mainEl) {
       mainEl.textContent = q.promptMain;
       mainEl.classList.toggle("word-hiragana-only", hiraganaOnly && q.promptMain === q.word.word);
-      mainEl.classList.remove("is-revealed");
+      mainEl.classList.remove("is-masked", "maskable", "is-revealed");
     }
+
+    // 2. '읽기: ...' 히라가나는 기본적으로 가려두고 터치/호버/정답확인 시 공개
     if (subEl) {
       subEl.textContent = q.promptSub;
       subEl.classList.remove("is-revealed");
+      if (q.promptSub && q.promptSub.startsWith("읽기:")) {
+        subEl.classList.add("maskable", "mask-kana", "is-masked");
+      } else {
+        subEl.classList.remove("maskable", "mask-kana", "is-masked");
+      }
     }
 
     const feedbackEl = document.getElementById("mcq-feedback");
@@ -306,6 +314,13 @@
         btn.classList.add("is-wrong");
       }
     });
+
+    // 정답 선택 후 가려졌던 히라가나 읽기 공개
+    const subEl = document.getElementById("mcq-question-sub");
+    if (subEl && subEl.classList.contains("mask-kana")) {
+      subEl.classList.remove("is-masked");
+      subEl.classList.add("is-revealed");
+    }
 
     const feedbackEl = document.getElementById("mcq-feedback");
     if (isCorrect) {
@@ -420,7 +435,6 @@
     const meaningEl = document.getElementById("input-quiz-meaning");
     const hintEl = document.getElementById("input-quiz-hint");
 
-    // 히라가나 전용 단어 예외 규칙: 한글 뜻을 제시하고 히라가나 직접 입력/타일 선택 출제
     if (q.hiraganaOnly) {
       if (ruleBadge) ruleBadge.textContent = "히라가나 전용 단어 규칙: 한글 뜻을 보고 히라가나 입력/선택";
       if (promptEl) {
@@ -678,6 +692,12 @@
     document.getElementById("mcq-choices-container")?.addEventListener("click", (e) => {
       const btn = e.target.closest(".choice-btn");
       if (btn) handleMcqChoice(btn);
+    });
+    document.getElementById("mcq-question-sub")?.addEventListener("click", (e) => {
+      const el = e.currentTarget;
+      if (el.classList.contains("mask-kana")) {
+        el.classList.toggle("is-revealed");
+      }
     });
     document.getElementById("btn-mcq-next")?.addEventListener("click", nextMcqQuestion);
     document.getElementById("btn-mcq-quit")?.addEventListener("click", () => {
