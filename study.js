@@ -783,6 +783,12 @@
     const backEl = document.getElementById("flashcard-back");
     if (!cardEl || !frontEl || !backEl) return;
 
+    // 카드 갱신 시 채점 없는 간단 메모란 초기화
+    const scratchEl = document.getElementById("fc-scratchpad-input");
+    if (scratchEl && !studyState.flashcardFlipped) {
+      scratchEl.value = "";
+    }
+
     const total = studyState.flashcardQueue.length;
     const idxText = document.getElementById("flashcard-index-label");
     if (!wordObj || total === 0) {
@@ -902,6 +908,8 @@
       (studyState.flashcardIndex + delta + studyState.flashcardQueue.length) % studyState.flashcardQueue.length;
     studyState.flashcardFlipped = false;
     studyState.activeKanjiChar = null;
+    const scratchEl = document.getElementById("fc-scratchpad-input");
+    if (scratchEl) scratchEl.value = "";
     renderFlashcard();
   }
 
@@ -1251,7 +1259,7 @@
     document.getElementById("btn-flashcard-shuffle")?.addEventListener("click", shuffleFlashcardQueue);
     document.getElementById("btn-flashcard-flip")?.addEventListener("click", () => flipFlashcard());
     document.getElementById("flashcard-card")?.addEventListener("click", (e) => {
-      if (e.target.closest("button, input, select, .maskable")) return;
+      if (e.target.closest("button, input, textarea, select, .maskable")) return;
       flipFlashcard();
     });
 
