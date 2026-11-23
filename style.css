@@ -367,7 +367,6 @@ body {
 /* =========================================================
    5. 전역 히라가나 가림 / 뜻 가림 스타일 & 예외 규칙
    ========================================================= */
-/* 4지선다 문제 본문(한자)은 가림 처리 대상에서 제외 */
 #mcq-question-text,
 #mcq-question-text.mask-kana,
 #mcq-question-text.is-masked {
@@ -380,7 +379,6 @@ body {
   content: none !important;
 }
 
-/* 4지선다 아래 힌트(히라가나): 전역 가림 활성화 또는 .is-masked 상태일 때만 가림 */
 body.mask-kana-active #mcq-question-sub.mask-kana:not(.is-revealed):not(:hover):not(:focus),
 #mcq-question-sub.mask-kana.is-masked:not(.is-revealed):not(:hover):not(:focus) {
   background-color: var(--mask-bg);
@@ -405,7 +403,6 @@ body.mask-kana-active #mcq-question-sub.mask-kana:not(.is-revealed):not(:hover):
   letter-spacing: 0;
 }
 
-/* 일반 단어장/플래시카드 등 전역 가림 스타일 */
 body.mask-kana-active .mask-kana:not(#mcq-question-text):not(.is-revealed):not(:hover):not(:focus),
 body.mask-meaning-active .mask-meaning:not(.is-revealed):not(:hover):not(:focus) {
   background-color: var(--mask-bg);
@@ -442,7 +439,6 @@ body.mask-meaning-active .mask-meaning:not(.is-revealed):not(:hover):not(:focus)
   letter-spacing: 0;
 }
 
-/* 표제어 자체가 히라가나로만 구성된 단어의 본문 표기는 절대 가리지 않음 */
 .word-hiragana-only,
 [data-hiragana-only="true"] .vocab-word,
 [data-hiragana-only="true"] .fc-word-wrap {
@@ -566,7 +562,6 @@ body.mask-meaning-active .mask-meaning:not(.is-revealed):not(:hover):not(:focus)
   min-height: 20px;
 }
 
-/* 암기 상태 배지 */
 .status-badge {
   display: inline-flex;
   align-items: center;
@@ -1007,10 +1002,62 @@ body.mask-meaning-active .mask-meaning:not(.is-revealed):not(:hover):not(:focus)
   min-height: 34px;
 }
 
+/* 채점 없는 간단 메모란 (카드 본문·힌트와 명확히 시각적 분리) */
+.fc-scratchpad-wrap {
+  width: 100%;
+  max-width: 520px;
+  margin: 16px auto 0;
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--accent-primary);
+  background-color: var(--bg-body);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fc-scratchpad-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.76rem;
+  font-weight: 700;
+  color: var(--accent-primary);
+  letter-spacing: 0.01em;
+}
+
+.fc-scratchpad-input {
+  width: 100%;
+  min-height: 54px;
+  resize: vertical;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  outline: none;
+  cursor: text;
+  transition: border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+.fc-scratchpad-input::placeholder {
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+}
+
+.fc-scratchpad-input:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 3px var(--accent-primary-soft);
+}
+
 .fc-hint {
   font-size: 0.8rem;
   color: var(--text-secondary);
-  margin-top: 18px;
+  margin-top: 14px;
 }
 
 .flashcard-back {
