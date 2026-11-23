@@ -32,7 +32,6 @@
     vocabSelectedIds: new Set(),
     // 플래시카드 상태
     flashcardScope: "ALL",
-    flashcardDeckId: "",
     flashcardQueue: [],
     flashcardIndex: 0,
     flashcardFlipped: false,
@@ -89,8 +88,19 @@
     return String(str ?? "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   }
 
+  function normalizeWordId(rawId) {
+    if (typeof rawId === "number" && Number.isFinite(rawId)) return rawId;
+    const str = String(rawId ?? "").trim();
+    if (/^\d+$/.test(str)) return Number(str);
+    return str;
+  }
+
+  function sameWordId(a, b) {
+    return String(a) === String(b);
+  }
+
   function getWordStatus(wordId) {
-    const rec = appState.progress[wordId];
+    const rec = appState.progress[wordId] ?? appState.progress[String(wordId)];
     if (rec && ["외움", "헷갈림", "미암기"].includes(rec.status)) {
       return rec.status;
     }
@@ -154,7 +164,6 @@
     } else if (type === "meaning") {
       appState.maskMeaning = !appState.maskMeaning;
     }
-    // 전체 가림 토글 시 개별 임시 공개 상태 초기화
     document.querySelectorAll(".is-revealed").forEach((el) => el.classList.remove("is-revealed"));
     saveState(appState);
     applyGlobalMasks();
@@ -221,7 +230,10 @@
 
     if (tabName === "dashboard") renderDashboard();
     if (tabName === "vocab") renderVocabTab();
-    if (tabName === "flashcard") renderFlashcard();
+    if (tabName === "flashcard") {
+      populateFlashcardScopeSelect();
+      renderFlashcard();
+    }
     if (tabName === "wrong-note") {
       document.dispatchEvent(new CustomEvent("jlpt:render-wrong-note"));
     }
@@ -233,6 +245,7 @@
   function refreshAllViews() {
     renderDashboard();
     renderVocabTab();
+    populateFlashcardScopeSelect();
     renderFlashcard();
     document.dispatchEvent(new CustomEvent("jlpt:refresh-quiz-scopes"));
     document.dispatchEvent(new CustomEvent("jlpt:render-wrong-note"));
@@ -257,7 +270,7 @@
       if (isDueForReview(word.id, appState)) due += 1;
     });
 
-    const favoriteCount = appState.favorites.length;
+    const favoriteCount = (appState.favorites || []).length;
     const totalWrongAttempts = Object.values(appState.wrongStats || {}).reduce(
       (acc, cur) => acc + (Number(cur?.count) || 0),
       0
@@ -296,24 +309,39 @@
     setText("stat-unmemorized-count", s.unmemorized);
     setText("stat-favorite-count", s.favoriteCount);
     setText("stat-wrong-count", s.totalWrongAttempts);
-    setText("custom-deck-count", `${appState.customDecks.length}개 단어장`);
+    setText("custom-deck-count", `${(appState.customDecks || []).length}개 단어장`);
 
     renderCustomDeckList();
     populateDeckSelects();
+    populateFlashcardScopeSelect();
   }
 
   function createCustomDeck(name, wordIds = []) {
     const trimmed = String(name || "").trim();
     if (!trimmed) return null;
+    const cleanedIds = [];
+    const seen = new Set();
+    (wordIds || []).forEach((raw) => {
+      if (raw === undefined || raw === null || raw === "") return;
+      const norm = normalizeWordId(raw);
+      const key = String(norm);
+      if (!seen.has(key)) {
+        seen.add(key);
+        cleanedIds.push(norm);
+      }
+    });
+
     const newDeck = {
       id: `deck_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       name: trimmed,
-      wordIds: [...new Set((wordIds || []).map(Number).filter(Number.isFinite))]
+      wordIds: cleanedIds
     };
+    appState.customDecks = appState.customDecks || [];
     appState.customDecks.push(newDeck);
     saveState(appState);
     renderDashboard();
     renderVocabTab();
+    populateFlashcardScopeSelect();
     document.dispatchEvent(new CustomEvent("jlpt:refresh-quiz-scopes"));
     return newDeck;
   }
@@ -322,7 +350,7 @@
     const listEl = document.getElementById("dashboard-deck-list");
     if (!listEl) return;
 
-    if (!appState.customDecks.length) {
+    if (!appState.customDecks || !appState.customDecks.length) {
       listEl.innerHTML = `<li class="helper-text">아직 생성된 커스텀 단어장이 없습니다.</li>`;
       return;
     }
@@ -333,7 +361,7 @@
         <li class="custom-deck-item" data-deck-id="${escapeHtml(deck.id)}">
           <div>
             <strong>${escapeHtml(deck.name)}</strong>
-            <span class="card-meta">(${deck.wordIds.length}개 단어)</span>
+            <span class="card-meta">(${(deck.wordIds || []).length}개 단어)</span>
           </div>
           <div style="display:flex; gap:6px;">
             <button type="button" class="mini-btn deck-open-btn" data-deck-id="${escapeHtml(deck.id)}">단어장에서 보기</button>
@@ -348,22 +376,23 @@
   function populateDeckSelects() {
     const vocabDeckFilter = document.getElementById("vocab-deck-filter");
     const batchDeckSelect = document.getElementById("vocab-batch-deck-select");
+    const decks = appState.customDecks || [];
 
     if (vocabDeckFilter) {
       const prev = studyState.vocabDeckFilter;
       vocabDeckFilter.innerHTML =
         `<option value="ALL">전체 단어장</option>` +
-        appState.customDecks
-          .map((d) => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} (${d.wordIds.length})</option>`)
+        decks
+          .map((d) => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)} (${(d.wordIds || []).length})</option>`)
           .join("");
-      vocabDeckFilter.value = appState.customDecks.some((d) => d.id === prev) ? prev : "ALL";
+      vocabDeckFilter.value = decks.some((d) => d.id === prev) ? prev : "ALL";
     }
 
     if (batchDeckSelect) {
       const prevBatch = batchDeckSelect.value;
       batchDeckSelect.innerHTML =
         `<option value="__NEW__">+ 새 단어장 만들기</option>` +
-        appState.customDecks
+        decks
           .map((d) => `<option value="${escapeHtml(d.id)}">${escapeHtml(d.name)}에 추가</option>`)
           .join("");
       if (prevBatch && [...batchDeckSelect.options].some((o) => o.value === prevBatch)) {
@@ -388,6 +417,48 @@
       sortedTags.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
   }
 
+  // 플래시카드 학습 범위 셀렉트 (기본 필터 + 카테고리/기출분류 + 커스텀 단어장)
+  function populateFlashcardScopeSelect() {
+    const selectEl = document.getElementById("flashcard-scope-select");
+    if (!selectEl) return;
+
+    const categorySet = new Set();
+    VOCAB_DB.forEach((w) => {
+      if (w.category) categorySet.add(w.category);
+    });
+    const categories = [...categorySet];
+
+    const categoryOptions = categories
+      .map((cat) => `<option value="CATEGORY:${escapeHtml(cat)}">분야: ${escapeHtml(cat)}</option>`)
+      .join("");
+
+    const deckOptions = (appState.customDecks || [])
+      .map(
+        (d) =>
+          `<option value="DECK:${escapeHtml(d.id)}">단어장: ${escapeHtml(d.name)} (${(d.wordIds || []).length})</option>`
+      )
+      .join("");
+
+    selectEl.innerHTML = `
+      <option value="ALL">전체 어휘</option>
+      <option value="DUE">오늘 복습 대상</option>
+      <option value="FAVORITE">즐겨찾기</option>
+      <option value="미암기">암기 상태: 미암기</option>
+      <option value="헷갈림">암기 상태: 헷갈림</option>
+      <option value="외움">암기 상태: 외움</option>
+      ${categoryOptions ? `<optgroup label="분야 / 기출 섹션">${categoryOptions}</optgroup>` : ""}
+      ${deckOptions ? `<optgroup label="내 커스텀 단어장">${deckOptions}</optgroup>` : ""}
+    `;
+
+    const hasPrev = [...selectEl.options].some((opt) => opt.value === studyState.flashcardScope);
+    if (hasPrev) {
+      selectEl.value = studyState.flashcardScope;
+    } else {
+      studyState.flashcardScope = "ALL";
+      selectEl.value = "ALL";
+    }
+  }
+
   // =========================================================
   // 2) 단어장 탭 렌더링 및 인터랙션
   // =========================================================
@@ -407,14 +478,14 @@
     }
 
     if (studyState.vocabDeckFilter !== "ALL") {
-      const deck = appState.customDecks.find((d) => d.id === studyState.vocabDeckFilter);
-      const idSet = new Set(deck ? deck.wordIds : []);
-      items = items.filter((w) => idSet.has(w.id));
+      const deck = (appState.customDecks || []).find((d) => d.id === studyState.vocabDeckFilter);
+      const idSet = new Set((deck?.wordIds || []).map(String));
+      items = items.filter((w) => idSet.has(String(w.id)));
     }
 
     if (studyState.vocabFavoritesOnly) {
-      const favSet = new Set(appState.favorites);
-      items = items.filter((w) => favSet.has(w.id));
+      const favSet = new Set((appState.favorites || []).map(String));
+      items = items.filter((w) => favSet.has(String(w.id)));
     }
 
     if (studyState.vocabDueOnly) {
@@ -427,7 +498,11 @@
     } else if (studyState.vocabSort === "status") {
       items.sort((a, b) => statusOrder[getWordStatus(a.id)] - statusOrder[getWordStatus(b.id)]);
     } else if (studyState.vocabSort === "wrong-desc") {
-      items.sort((a, b) => (appState.wrongStats[b.id]?.count || 0) - (appState.wrongStats[a.id]?.count || 0));
+      items.sort(
+        (a, b) =>
+          (appState.wrongStats[b.id]?.count || appState.wrongStats[String(b.id)]?.count || 0) -
+          (appState.wrongStats[a.id]?.count || appState.wrongStats[String(a.id)]?.count || 0)
+      );
     }
 
     return items;
@@ -458,20 +533,20 @@
     container.innerHTML = list
       .map((item) => {
         const status = getWordStatus(item.id);
-        const isFav = appState.favorites.includes(item.id);
+        const isFav = (appState.favorites || []).some((id) => sameWordId(id, item.id));
         const isChecked = studyState.vocabSelectedIds.has(item.id);
         const dupLabel = formatDuplicateExamLabel(item.examTags);
         const hiraganaOnly = isHiraganaOnly(item.word);
-        const memoVal = appState.posNotes[item.id] ?? item.pos ?? "";
-        const nextDate = appState.progress[item.id]?.nextReviewDate || getTodayISO(0);
+        const memoVal = appState.posNotes[item.id] ?? appState.posNotes[String(item.id)] ?? item.pos ?? "";
+        const nextDate = (appState.progress[item.id] ?? appState.progress[String(item.id)])?.nextReviewDate || getTodayISO(0);
 
         return `
-          <article class="vocab-item" data-word-id="${item.id}" data-hiragana-only="${hiraganaOnly}">
+          <article class="vocab-item" data-word-id="${escapeHtml(item.id)}" data-hiragana-only="${hiraganaOnly}">
             <div>
               <input
                 type="checkbox"
                 class="vocab-row-checkbox"
-                data-word-id="${item.id}"
+                data-word-id="${escapeHtml(item.id)}"
                 ${isChecked ? "checked" : ""}
                 aria-label="${escapeHtml(item.word)} 선택"
               />
@@ -493,12 +568,12 @@
                 <input
                   type="text"
                   class="pos-memo-input"
-                  data-word-id="${item.id}"
+                  data-word-id="${escapeHtml(item.id)}"
                   value="${escapeHtml(memoVal)}"
                   placeholder="품사/학습 메모 입력"
                   aria-label="품사 및 학습 메모"
                 />
-                <button type="button" class="mini-btn save-memo-btn" data-word-id="${item.id}">메모 저장</button>
+                <button type="button" class="mini-btn save-memo-btn" data-word-id="${escapeHtml(item.id)}">메모 저장</button>
               </div>
             </div>
 
@@ -507,13 +582,13 @@
               <button
                 type="button"
                 class="icon-btn fav-toggle ${isFav ? "is-favorite" : ""}"
-                data-word-id="${item.id}"
+                data-word-id="${escapeHtml(item.id)}"
                 aria-pressed="${isFav}"
                 title="즐겨찾기"
               >
                 ${isFav ? "★" : "☆"}
               </button>
-              <select class="select-control vocab-status-select" data-word-id="${item.id}" aria-label="암기 상태 변경">
+              <select class="select-control vocab-status-select" data-word-id="${escapeHtml(item.id)}" aria-label="암기 상태 변경">
                 <option value="미암기" ${status === "미암기" ? "selected" : ""}>미암기</option>
                 <option value="헷갈림" ${status === "헷갈림" ? "selected" : ""}>헷갈림</option>
                 <option value="외움" ${status === "외움" ? "selected" : ""}>외움</option>
@@ -526,7 +601,7 @@
   }
 
   function applySrsUpdate(wordId, ratingOrStatus) {
-    const prev = appState.progress[wordId] || null;
+    const prev = appState.progress[wordId] ?? appState.progress[String(wordId)] ?? null;
     appState.progress[wordId] = calculateNextSrs(prev, ratingOrStatus);
     saveState(appState);
     renderDashboard();
@@ -537,7 +612,7 @@
   function saveSelectedWordsToDeck(selectedIds, selectEl, newNameInput) {
     const ids = [...selectedIds];
     if (!ids.length) {
-      alert("단어장에서 먼저 1개 이상 선택해 주세요.");
+      alert("먼저 1개 이상 단어를 선택해 주세요.");
       return;
     }
 
@@ -550,12 +625,22 @@
       if (newNameInput) newNameInput.value = "";
       alert(`"${deckName}" 단어장에 ${ids.length}개 단어를 저장했습니다.`);
     } else {
-      const targetDeck = appState.customDecks.find((d) => d.id === chosenVal);
+      const targetDeck = (appState.customDecks || []).find((d) => d.id === chosenVal);
       if (targetDeck) {
-        targetDeck.wordIds = [...new Set([...targetDeck.wordIds, ...ids])];
+        const merged = [...(targetDeck.wordIds || [])];
+        const existingKeys = new Set(merged.map(String));
+        ids.forEach((raw) => {
+          const norm = normalizeWordId(raw);
+          if (!existingKeys.has(String(norm))) {
+            existingKeys.add(String(norm));
+            merged.push(norm);
+          }
+        });
+        targetDeck.wordIds = merged;
         saveState(appState);
         renderDashboard();
         renderVocabTab();
+        populateFlashcardScopeSelect();
         document.dispatchEvent(new CustomEvent("jlpt:refresh-quiz-scopes"));
         alert(`"${targetDeck.name}" 단어장에 ${ids.length}개 단어를 추가했습니다.`);
       }
@@ -563,21 +648,27 @@
   }
 
   // =========================================================
-  // 3) 플래시카드 렌더링 (예문 하이라이트 · 한자 역추적 · 문법 · SRS)
+  // 3) 플래시카드 렌더링 (범위 필터 · 뒤집기 · 예문 · 한자 · SRS)
   // =========================================================
   function buildFlashcardQueue() {
+    const scope = studyState.flashcardScope || "ALL";
     let list = VOCAB_DB.slice();
-    if (studyState.flashcardScope === "DUE") {
-      list = list.filter((w) => isDueForReview(w.id, appState));
-    } else if (studyState.flashcardScope === "FAVORITE") {
-      const favSet = new Set(appState.favorites);
-      list = list.filter((w) => favSet.has(w.id));
-    } else if (["외움", "헷갈림", "미암기"].includes(studyState.flashcardScope)) {
-      list = list.filter((w) => getWordStatus(w.id) === studyState.flashcardScope);
-    }
 
-    if (!list.length) {
-      list = VOCAB_DB.slice();
+    if (scope === "DUE") {
+      list = list.filter((w) => isDueForReview(w.id, appState));
+    } else if (scope === "FAVORITE") {
+      const favSet = new Set((appState.favorites || []).map(String));
+      list = list.filter((w) => favSet.has(String(w.id)));
+    } else if (["외움", "헷갈림", "미암기"].includes(scope)) {
+      list = list.filter((w) => getWordStatus(w.id) === scope);
+    } else if (scope.startsWith("CATEGORY:")) {
+      const targetCat = scope.slice("CATEGORY:".length);
+      list = list.filter((w) => w.category === targetCat);
+    } else if (scope.startsWith("DECK:")) {
+      const deckId = scope.slice("DECK:".length);
+      const deck = (appState.customDecks || []).find((d) => String(d.id) === String(deckId));
+      const idSet = new Set((deck?.wordIds || []).map(String));
+      list = list.filter((w) => idSet.has(String(w.id)));
     }
 
     studyState.flashcardQueue = list.map((w) => w.id);
@@ -601,14 +692,13 @@
   }
 
   function getCurrentFlashcardWord() {
-    if (!studyState.flashcardQueue.length) buildFlashcardQueue();
     if (!studyState.flashcardQueue.length) return null;
     const safeIdx =
       ((studyState.flashcardIndex % studyState.flashcardQueue.length) + studyState.flashcardQueue.length) %
       studyState.flashcardQueue.length;
     studyState.flashcardIndex = safeIdx;
     const wordId = studyState.flashcardQueue[safeIdx];
-    return VOCAB_DB.find((w) => w.id === wordId) || null;
+    return VOCAB_DB.find((w) => sameWordId(w.id, wordId)) || null;
   }
 
   function renderKanjiNetwork(wordObj) {
@@ -667,7 +757,7 @@
 
     if (wordObj.connection) {
       connBadge.hidden = false;
-      connBadge.textContent = `접속 규칙: ${wordObj.connection}`;
+      connBadge.textContent = `접속/유의: ${wordObj.connection}`;
     } else {
       connBadge.hidden = true;
       connBadge.textContent = "";
@@ -691,13 +781,25 @@
     const cardEl = document.getElementById("flashcard-card");
     const frontEl = document.getElementById("flashcard-front");
     const backEl = document.getElementById("flashcard-back");
-    if (!wordObj || !cardEl || !frontEl || !backEl) return;
+    if (!cardEl || !frontEl || !backEl) return;
 
     const total = studyState.flashcardQueue.length;
     const idxText = document.getElementById("flashcard-index-label");
+    if (!wordObj || total === 0) {
+      if (idxText) idxText.textContent = `0 / 0`;
+      frontEl.hidden = false;
+      backEl.hidden = true;
+      cardEl.classList.remove("is-flipped");
+      const wordWrap = document.getElementById("fc-word-display");
+      const kanaWrap = document.getElementById("fc-kana-display");
+      if (wordWrap) wordWrap.textContent = "해당 범위에 단어가 없습니다";
+      if (kanaWrap) kanaWrap.textContent = "다른 학습 범위를 선택해 주세요";
+      return;
+    }
+
     if (idxText) idxText.textContent = `${studyState.flashcardIndex + 1} / ${total}`;
 
-    const prog = appState.progress[wordObj.id];
+    const prog = appState.progress[wordObj.id] ?? appState.progress[String(wordObj.id)];
     const nextReviewLabel = document.getElementById("flashcard-next-review-label");
     if (nextReviewLabel) {
       nextReviewLabel.textContent = `다음 복습: ${prog?.nextReviewDate || getTodayISO(0)} (간격 ${prog?.intervalDays || 1}일)`;
@@ -705,6 +807,7 @@
 
     const hiraganaOnly = isHiraganaOnly(wordObj.word);
     cardEl.setAttribute("data-flipped", String(studyState.flashcardFlipped));
+    cardEl.classList.toggle("is-flipped", studyState.flashcardFlipped);
     cardEl.setAttribute("data-hiragana-only", String(hiraganaOnly));
     frontEl.hidden = studyState.flashcardFlipped;
     backEl.hidden = !studyState.flashcardFlipped;
@@ -724,7 +827,7 @@
     }
 
     const favBtn = document.getElementById("fc-favorite-btn");
-    const isFav = appState.favorites.includes(wordObj.id);
+    const isFav = (appState.favorites || []).some((id) => sameWordId(id, wordObj.id));
     if (favBtn) {
       favBtn.classList.toggle("is-favorite", isFav);
       favBtn.setAttribute("aria-pressed", String(isFav));
@@ -751,7 +854,7 @@
 
     const posEl = document.getElementById("fc-pos-display");
     if (posEl) {
-      posEl.textContent = appState.posNotes[wordObj.id] || wordObj.pos || "";
+      posEl.textContent = appState.posNotes[wordObj.id] ?? appState.posNotes[String(wordObj.id)] ?? wordObj.pos ?? "";
     }
 
     const exSentEl = document.getElementById("fc-example-sentence");
@@ -788,6 +891,7 @@
   }
 
   function flipFlashcard(forceState = null) {
+    if (!studyState.flashcardQueue.length) return;
     studyState.flashcardFlipped = typeof forceState === "boolean" ? forceState : !studyState.flashcardFlipped;
     renderFlashcard();
   }
@@ -907,8 +1011,7 @@
 
       if (tab === "flashcard" && preset === "due") {
         studyState.flashcardScope = "DUE";
-        const fcScope = document.getElementById("flashcard-scope-select");
-        if (fcScope) fcScope.value = "DUE";
+        populateFlashcardScopeSelect();
         buildFlashcardQueue();
       }
 
@@ -918,8 +1021,7 @@
     // 상단 오늘 복습 배지 클릭
     document.getElementById("due-review-badge")?.addEventListener("click", () => {
       studyState.flashcardScope = "DUE";
-      const fcScope = document.getElementById("flashcard-scope-select");
-      if (fcScope) fcScope.value = "DUE";
+      populateFlashcardScopeSelect();
       buildFlashcardQueue();
       switchTab("flashcard");
     });
@@ -979,11 +1081,16 @@
       const delBtn = e.target.closest(".deck-delete-btn");
       if (delBtn) {
         const deckId = delBtn.getAttribute("data-deck-id");
-        appState.customDecks = appState.customDecks.filter((d) => d.id !== deckId);
+        appState.customDecks = (appState.customDecks || []).filter((d) => d.id !== deckId);
         if (studyState.vocabDeckFilter === deckId) studyState.vocabDeckFilter = "ALL";
+        if (studyState.flashcardScope === `DECK:${deckId}`) {
+          studyState.flashcardScope = "ALL";
+          buildFlashcardQueue();
+        }
         saveState(appState);
         renderDashboard();
         renderVocabTab();
+        populateFlashcardScopeSelect();
         document.dispatchEvent(new CustomEvent("jlpt:refresh-quiz-scopes"));
       }
     });
@@ -1007,6 +1114,7 @@
           applyGlobalMasks();
           const rateSel = document.getElementById("tts-rate-select");
           if (rateSel) rateSel.value = String(appState.ttsRate);
+          populateFlashcardScopeSelect();
           buildFlashcardQueue();
           refreshAllViews();
           if (statusMsg) statusMsg.textContent = "JSON 백업 데이터를 성공적으로 복원했습니다.";
@@ -1023,10 +1131,12 @@
       appState = resetAllData();
       studyState.vocabSelectedIds.clear();
       studyState.flashcardSelectedIds.clear();
+      studyState.flashcardScope = "ALL";
       applyTheme();
       applyGlobalMasks();
       const rateSel = document.getElementById("tts-rate-select");
       if (rateSel) rateSel.value = String(appState.ttsRate);
+      populateFlashcardScopeSelect();
       buildFlashcardQueue();
       refreshAllViews();
       if (statusMsg) statusMsg.textContent = "모든 학습 데이터가 초기화되었습니다.";
@@ -1072,7 +1182,7 @@
     document.getElementById("vocab-list-container")?.addEventListener("change", (e) => {
       const cb = e.target.closest(".vocab-row-checkbox");
       if (cb) {
-        const id = Number(cb.getAttribute("data-word-id"));
+        const id = normalizeWordId(cb.getAttribute("data-word-id"));
         if (cb.checked) studyState.vocabSelectedIds.add(id);
         else studyState.vocabSelectedIds.delete(id);
         const badge = document.getElementById("vocab-selected-count");
@@ -1082,7 +1192,7 @@
 
       const stSel = e.target.closest(".vocab-status-select");
       if (stSel) {
-        const id = Number(stSel.getAttribute("data-word-id"));
+        const id = normalizeWordId(stSel.getAttribute("data-word-id"));
         applySrsUpdate(id, stSel.value);
       }
     });
@@ -1096,8 +1206,9 @@
 
       const favBtn = e.target.closest(".fav-toggle");
       if (favBtn) {
-        const id = Number(favBtn.getAttribute("data-word-id"));
-        const idx = appState.favorites.indexOf(id);
+        const id = normalizeWordId(favBtn.getAttribute("data-word-id"));
+        appState.favorites = appState.favorites || [];
+        const idx = appState.favorites.findIndex((x) => sameWordId(x, id));
         if (idx >= 0) appState.favorites.splice(idx, 1);
         else appState.favorites.push(id);
         saveState(appState);
@@ -1108,8 +1219,9 @@
 
       const memoBtn = e.target.closest(".save-memo-btn");
       if (memoBtn) {
-        const id = Number(memoBtn.getAttribute("data-word-id"));
-        const input = document.querySelector(`.pos-memo-input[data-word-id="${id}"]`);
+        const rawAttr = memoBtn.getAttribute("data-word-id");
+        const id = normalizeWordId(rawAttr);
+        const input = document.querySelector(`.pos-memo-input[data-word-id="${CSS.escape(String(rawAttr))}"]`);
         if (input) {
           appState.posNotes[id] = input.value.trim();
           saveState(appState);
@@ -1166,7 +1278,8 @@
     document.getElementById("fc-favorite-btn")?.addEventListener("click", () => {
       const w = getCurrentFlashcardWord();
       if (!w) return;
-      const idx = appState.favorites.indexOf(w.id);
+      appState.favorites = appState.favorites || [];
+      const idx = appState.favorites.findIndex((x) => sameWordId(x, w.id));
       if (idx >= 0) appState.favorites.splice(idx, 1);
       else appState.favorites.push(w.id);
       saveState(appState);
@@ -1175,8 +1288,8 @@
     });
 
     document.getElementById("flashcard-current-select")?.addEventListener("change", (e) => {
-      const id = Number(e.target.getAttribute("data-word-id"));
-      if (!id) return;
+      const id = normalizeWordId(e.target.getAttribute("data-word-id"));
+      if (id === undefined || id === null || id === "") return;
       if (e.target.checked) studyState.flashcardSelectedIds.add(id);
       else studyState.flashcardSelectedIds.delete(id);
       const badge = document.getElementById("flashcard-selected-count");
@@ -1214,7 +1327,10 @@
       appState = loadState();
       renderDashboard();
       if (studyState.activeTab === "vocab") renderVocabTab();
-      if (studyState.activeTab === "flashcard") renderFlashcard();
+      if (studyState.activeTab === "flashcard") {
+        populateFlashcardScopeSelect();
+        renderFlashcard();
+      }
     });
 
     document.addEventListener("keydown", handleGlobalKeydown);
@@ -1230,6 +1346,7 @@
     applyTheme();
     applyGlobalMasks();
     populateExamFilterOptions();
+    populateFlashcardScopeSelect();
     buildFlashcardQueue();
     bindEvents();
     refreshAllViews();
