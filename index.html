@@ -338,7 +338,7 @@
           </div>
 
           <article class="flashcard" id="flashcard-card" data-flipped="false" tabindex="0" aria-label="플래시카드">
-            <!-- 앞면: 표기 / 읽기 -->
+            <!-- 앞면: 표기 / 읽기 / 간단 메모 -->
             <div class="flashcard-face flashcard-front" id="flashcard-front">
               <div class="card-top-badges">
                 <span class="dup-badge" id="fc-duplicate-badge" hidden></span>
@@ -350,6 +350,18 @@
 
               <div class="fc-word-wrap" id="fc-word-display" lang="ja"></div>
               <div class="fc-kana-wrap maskable mask-kana" id="fc-kana-display" lang="ja"></div>
+
+              <!-- 채점 없는 간단 메모란 (앞면 하단 여백) -->
+              <div class="fc-scratchpad-wrap">
+                <label for="fc-scratchpad-input" class="fc-scratchpad-label">간단 메모 (채점 없음)</label>
+                <textarea
+                  id="fc-scratchpad-input"
+                  class="fc-scratchpad-input"
+                  rows="2"
+                  placeholder="떠오른 뜻이나 히라가나를 가볍게 적어보세요..."
+                ></textarea>
+              </div>
+
               <div class="fc-hint">카드를 클릭하거나 Space 키를 눌러 뒷면 보기</div>
             </div>
 
@@ -736,17 +748,15 @@
     </div>
   </div>
 
-  <!-- 스크립트 로드 순서: data.js → study.js → quiz.js -->
-<script src="./data-kanji-reading.js"></script>
-<script src="./data-notation-exam.js"></script>
-<script src="./data-word-formation.js"></script>
-<script src="./data-context-composition.js"></script>
-<script src="./data-synonym-expr.js"></script>
-<script src="./data-usage-exam.js"></script>  
-<script src="./data-grammar.js"></script>
-<script src="./data-reading.js"></script>
-<script src="./data.js"></script>
-<script src="./study.js"></script>
-<script src="./quiz.js"></script>
+  <!-- 스크립트 로드 순서: 개별 DB → data.js → study.js → quiz.js -->
+  <script src="./data-kanji-reading.js"></script>
+  <script src="./data-notation-exam.js"></script>
+  <script src="./data-word-formation.js"></script>
+  <script src="./data-context-composition.js"></script>
+  <script src="./data-synonym-expr.js"></script>
+  <script src="./data-usage-exam.js"></script>
+  <script src="./data.js"></script>
+  <script src="./study.js"></script>
+  <script src="./quiz.js"></script>
 </body>
 </html>
