@@ -103,13 +103,17 @@
   const notationExamList = Array.isArray(window.NOTATION_EXAM_DB) ? window.NOTATION_EXAM_DB : [];
   const wordFormationList = Array.isArray(window.WORD_FORMATION_DB) ? window.WORD_FORMATION_DB : [];
   const contextCompositionList = Array.isArray(window.CONTEXT_COMPOSITION_DB) ? window.CONTEXT_COMPOSITION_DB : [];
+  const synonymExprList = Array.isArray(window.SYNONYM_EXPR_DB) ? window.SYNONYM_EXPR_DB : [];
+  const usageExamList = Array.isArray(window.USAGE_EXAM_DB) ? window.USAGE_EXAM_DB : []; 	
   const extraVocabList = Array.isArray(window.EXTRA_VOCAB_DB) ? window.EXTRA_VOCAB_DB : [];
 
   const VOCAB_DB = mergeDuplicateEntries([
     ...kanjiReadingList,
     ...notationExamList,
 	...wordFormationList,
-	...contextCompositionList,  
+	...contextCompositionList,
+	...synonymExprList,
+	...usageExamList,  
     ...extraVocabList
 	
   ]);
