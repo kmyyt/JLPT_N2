@@ -218,6 +218,21 @@
            ===================================== -->
       <section class="tab-panel" id="panel-vocab" data-tab-panel="vocab" hidden>
         <div class="card filter-toolbar">
+          <!-- 통합 검색창 -->
+          <div class="filter-search-row">
+            <label class="filter-field search-field">
+              <span>통합 검색 (표기 · 히라가나 · 뜻 · 품사 · 메모)</span>
+              <input
+                type="search"
+                id="vocab-search-input"
+                class="text-input"
+                placeholder="예: 議論, ろんそう, 논쟁, 명사..."
+                autocomplete="off"
+              />
+            </label>
+            <button type="button" class="btn" id="btn-vocab-search-clear">검색 초기화</button>
+          </div>
+
           <div class="filter-row">
             <label class="filter-field">
               <span>기출 연도/분류</span>
@@ -282,7 +297,7 @@
         </div>
 
         <div class="vocab-list-meta">
-          <span id="vocab-result-count">총 0개 단어</span>
+          <span id="vocab-result-count">총 0개 단어 (단어 클릭 시 플래시카드로 이동)</span>
           <label class="checkbox-inline">
             <input type="checkbox" id="vocab-select-all" />
             <span>현재 목록 전체 선택</span>
@@ -628,8 +643,8 @@
             <h3>1. 탭별 학습 안내</h3>
             <ul class="guide-list">
               <li><strong>대시보드:</strong> 학습 통계, 오늘 복습 대상, 커스텀 단어장 생성, JSON 백업/복원/초기화를 한곳에서 관리합니다.</li>
-              <li><strong>단어장:</strong> 기출 연도/분류 필터와 정렬, <code>n년·n년도 중복 기출</code> 배지, 품사 메모, 다중 선택 단어장 저장을 지원합니다.</li>
-              <li><strong>플래시카드:</strong> 앞면 표기/읽기, 뒷면 뜻·품사·예문 1개(읽기/해석 토글, 목표 키워드 하이라이트), 공통 한자 역추적, SRS 3단계 평가를 제공합니다.</li>
+              <li><strong>단어장:</strong> 통합 검색과 기출 연도/분류 필터·정렬, <code>n년·n년도 중복 기출</code> 배지, 품사 메모, 다중 선택 단어장 저장을 지원하며 단어를 누르면 해당 플래시카드로 바로 이동합니다.</li>
+              <li><strong>플래시카드:</strong> 앞면 표기/읽기·간단 메모, 뒷면 뜻·품사·예문 1개(읽기/해석 토글, 목표 키워드 하이라이트), 공통 한자 역추적, SRS 3단계 평가를 제공합니다.</li>
               <li><strong>4지선다 퀴즈 &amp; 주관식 테스트:</strong> 범위·문항 수·셔플 설정과 오답노트 자동 기록 및 재도전 기능을 제공합니다.</li>
             </ul>
           </article>
