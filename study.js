@@ -18,11 +18,13 @@
     resetAllData
   } = window.JLPTData;
 
+  const VOCAB_PAGE_SIZE = 50;
+
   let appState = loadState();
 
   const studyState = {
     activeTab: "dashboard",
-    // 단어장 필터/검색/정렬/선택
+    // 단어장 필터/검색/정렬/선택/페이지네이션
     vocabSearchQuery: "",
     vocabExamFilter: "ALL",
     vocabStatusFilter: "ALL",
@@ -31,6 +33,8 @@
     vocabFavoritesOnly: false,
     vocabDueOnly: false,
     vocabSelectedIds: new Set(),
+    vocabVisibleCount: VOCAB_PAGE_SIZE,
+    vocabRenderedOnce: false,
     // 플래시카드 상태
     flashcardScope: "ALL",
     flashcardQueue: [],
@@ -245,11 +249,19 @@
 
   function refreshAllViews() {
     renderDashboard();
-    renderVocabTab();
+    if (studyState.activeTab === "vocab") {
+      renderVocabTab();
+    } else {
+      studyState.vocabRenderedOnce = false;
+    }
     populateFlashcardScopeSelect();
-    renderFlashcard();
+    if (studyState.activeTab === "flashcard") {
+      renderFlashcard();
+    }
     document.dispatchEvent(new CustomEvent("jlpt:refresh-quiz-scopes"));
-    document.dispatchEvent(new CustomEvent("jlpt:render-wrong-note"));
+    if (studyState.activeTab === "wrong-note") {
+      document.dispatchEvent(new CustomEvent("jlpt:render-wrong-note"));
+    }
   }
 
   function openFlashcardForWord(wordId, sourceList = null) {
@@ -363,7 +375,7 @@
     appState.customDecks.push(newDeck);
     saveState(appState);
     renderDashboard();
-    renderVocabTab();
+    if (studyState.activeTab === "vocab") renderVocabTab();
     populateFlashcardScopeSelect();
     document.dispatchEvent(new CustomEvent("jlpt:refresh-quiz-scopes"));
     return newDeck;
@@ -465,9 +477,9 @@
       <option value="ALL">전체 어휘</option>
       <option value="DUE">오늘 복습 대상</option>
       <option value="FAVORITE">즐겨찾기</option>
-      <option value="미암기">암기 상태: 미암기</option>
-      <option value="헷갈림">암기 상태: 헷갈림</option>
       <option value="외움">암기 상태: 외움</option>
+      <option value="헷갈림">암기 상태: 헷갈림</option>
+      <option value="미암기">암기 상태: 미암기</option>
       ${categoryOptions ? `<optgroup label="분야 / 기출 섹션">${categoryOptions}</optgroup>` : ""}
       ${deckOptions ? `<optgroup label="내 커스텀 단어장">${deckOptions}</optgroup>` : ""}
     `;
@@ -482,8 +494,17 @@
   }
 
   // =========================================================
-  // 2) 단어장 탭 렌더링 및 인터랙션 (통합 검색 + 플래시카드 이동)
+  // 2) 단어장 탭 렌더링 및 인터랙션 (통합 검색 + 페이지네이션 + 플래시카드 이동)
   // =========================================================
+  function resetVocabPaginationAndRender() {
+    studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
+    if (studyState.activeTab === "vocab") {
+      renderVocabTab();
+    } else {
+      studyState.vocabRenderedOnce = false;
+    }
+  }
+
   function getFilteredAndSortedVocab() {
     let items = VOCAB_DB.slice();
 
@@ -551,21 +572,32 @@
   function renderVocabTab() {
     populateDeckSelects();
     const list = getFilteredAndSortedVocab();
+    const visibleList = list.slice(0, studyState.vocabVisibleCount);
+    const remainingCount = Math.max(0, list.length - visibleList.length);
+
     const container = document.getElementById("vocab-list-container");
     const countLabel = document.getElementById("vocab-result-count");
     const selectedBadge = document.getElementById("vocab-selected-count");
     const selectAllCb = document.getElementById("vocab-select-all");
     const searchInput = document.getElementById("vocab-search-input");
 
+    studyState.vocabRenderedOnce = true;
+
     if (searchInput && searchInput.value !== studyState.vocabSearchQuery) {
       searchInput.value = studyState.vocabSearchQuery;
     }
 
-    if (countLabel) countLabel.textContent = `총 ${list.length}개 단어 (단어 클릭 시 플래시카드로 이동)`;
+    if (countLabel) {
+      countLabel.textContent =
+        remainingCount > 0
+          ? `총 ${list.length}개 중 ${visibleList.length}개 표시 (단어 클릭 시 플래시카드로 이동)`
+          : `총 ${list.length}개 단어 (단어 클릭 시 플래시카드로 이동)`;
+    }
     if (selectedBadge) selectedBadge.textContent = `${studyState.vocabSelectedIds.size}개 선택됨`;
 
     if (selectAllCb) {
-      selectAllCb.checked = list.length > 0 && list.every((w) => studyState.vocabSelectedIds.has(w.id));
+      selectAllCb.checked =
+        visibleList.length > 0 && visibleList.every((w) => studyState.vocabSelectedIds.has(w.id));
     }
 
     if (!container) return;
@@ -575,7 +607,7 @@
       return;
     }
 
-    container.innerHTML = list
+    const cardsHtml = visibleList
       .map((item) => {
         const status = getWordStatus(item.id);
         const isFav = (appState.favorites || []).some((id) => sameWordId(id, item.id));
@@ -643,6 +675,22 @@
         `;
       })
       .join("");
+
+    const loadMoreHtml =
+      remainingCount > 0
+        ? `
+          <div class="button-row" style="justify-content:center; margin-top:14px;">
+            <button type="button" class="btn" id="btn-vocab-load-more">
+              더 보기 (${remainingCount}개 남음)
+            </button>
+            <button type="button" class="btn" id="btn-vocab-show-all">
+              전체 보기 (${list.length}개)
+            </button>
+          </div>
+        `
+        : "";
+
+    container.innerHTML = cardsHtml + loadMoreHtml;
   }
 
   function applySrsUpdate(wordId, ratingOrStatus) {
@@ -684,7 +732,7 @@
         targetDeck.wordIds = merged;
         saveState(appState);
         renderDashboard();
-        renderVocabTab();
+        if (studyState.activeTab === "vocab") renderVocabTab();
         populateFlashcardScopeSelect();
         document.dispatchEvent(new CustomEvent("jlpt:refresh-quiz-scopes"));
         alert(`"${targetDeck.name}" 단어장에 ${ids.length}개 단어를 추가했습니다.`);
@@ -1053,6 +1101,7 @@
         studyState.vocabStatusFilter = statusFilter || "ALL";
         studyState.vocabFavoritesOnly = favFilter === "true";
         studyState.vocabDueOnly = false;
+        studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
         const stSel = document.getElementById("vocab-status-filter");
         const favCb = document.getElementById("vocab-favorites-only");
         const dueCb = document.getElementById("vocab-due-only");
@@ -1105,7 +1154,11 @@
     // 가려진 요소 클릭 시 개별 임시 공개
     document.addEventListener("click", (e) => {
       const maskEl = e.target.closest(".maskable");
-      if (maskEl && (document.body.classList.contains("mask-kana-active") || document.body.classList.contains("mask-meaning-active"))) {
+      if (
+        maskEl &&
+        (document.body.classList.contains("mask-kana-active") ||
+          document.body.classList.contains("mask-meaning-active"))
+      ) {
         maskEl.classList.toggle("is-revealed");
       }
     });
@@ -1124,6 +1177,7 @@
       if (openBtn) {
         const deckId = openBtn.getAttribute("data-deck-id");
         studyState.vocabDeckFilter = deckId;
+        studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
         switchTab("vocab");
         const sel = document.getElementById("vocab-deck-filter");
         if (sel) sel.value = deckId;
@@ -1141,7 +1195,7 @@
         }
         saveState(appState);
         renderDashboard();
-        renderVocabTab();
+        if (studyState.activeTab === "vocab") renderVocabTab();
         populateFlashcardScopeSelect();
         document.dispatchEvent(new CustomEvent("jlpt:refresh-quiz-scopes"));
       }
@@ -1183,6 +1237,7 @@
       appState = resetAllData();
       studyState.vocabSelectedIds.clear();
       studyState.flashcardSelectedIds.clear();
+      studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
       studyState.flashcardScope = "ALL";
       applyTheme();
       applyGlobalMasks();
@@ -1194,14 +1249,16 @@
       if (statusMsg) statusMsg.textContent = "모든 학습 데이터가 초기화되었습니다.";
     });
 
-    // 단어장 통합 검색·필터·정렬·선택·플래시카드 이동 이벤트
+    // 단어장 통합 검색·필터·정렬·선택·페이지네이션·플래시카드 이동 이벤트
     document.getElementById("vocab-search-input")?.addEventListener("input", (e) => {
       studyState.vocabSearchQuery = e.target.value;
+      studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
       renderVocabTab();
     });
 
     document.getElementById("btn-vocab-search-clear")?.addEventListener("click", () => {
       studyState.vocabSearchQuery = "";
+      studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
       const input = document.getElementById("vocab-search-input");
       if (input) input.value = "";
       renderVocabTab();
@@ -1209,36 +1266,42 @@
 
     document.getElementById("vocab-exam-filter")?.addEventListener("change", (e) => {
       studyState.vocabExamFilter = e.target.value;
+      studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
       renderVocabTab();
     });
     document.getElementById("vocab-status-filter")?.addEventListener("change", (e) => {
       studyState.vocabStatusFilter = e.target.value;
+      studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
       renderVocabTab();
     });
     document.getElementById("vocab-deck-filter")?.addEventListener("change", (e) => {
       studyState.vocabDeckFilter = e.target.value;
+      studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
       renderVocabTab();
     });
     document.getElementById("vocab-sort-select")?.addEventListener("change", (e) => {
       studyState.vocabSort = e.target.value;
+      studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
       renderVocabTab();
     });
     document.getElementById("vocab-favorites-only")?.addEventListener("change", (e) => {
       studyState.vocabFavoritesOnly = e.target.checked;
+      studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
       renderVocabTab();
     });
     document.getElementById("vocab-due-only")?.addEventListener("change", (e) => {
       studyState.vocabDueOnly = e.target.checked;
+      studyState.vocabVisibleCount = VOCAB_PAGE_SIZE;
       renderVocabTab();
     });
 
     document.getElementById("vocab-select-all")?.addEventListener("change", (e) => {
       const checked = e.target.checked;
-      const currentItems = getFilteredAndSortedVocab();
+      const visibleItems = getFilteredAndSortedVocab().slice(0, studyState.vocabVisibleCount);
       if (checked) {
-        currentItems.forEach((w) => studyState.vocabSelectedIds.add(w.id));
+        visibleItems.forEach((w) => studyState.vocabSelectedIds.add(w.id));
       } else {
-        currentItems.forEach((w) => studyState.vocabSelectedIds.delete(w.id));
+        visibleItems.forEach((w) => studyState.vocabSelectedIds.delete(w.id));
       }
       renderVocabTab();
     });
@@ -1262,6 +1325,18 @@
     });
 
     document.getElementById("vocab-list-container")?.addEventListener("click", (e) => {
+      if (e.target.closest("#btn-vocab-load-more")) {
+        studyState.vocabVisibleCount += VOCAB_PAGE_SIZE;
+        renderVocabTab();
+        return;
+      }
+
+      if (e.target.closest("#btn-vocab-show-all")) {
+        studyState.vocabVisibleCount = VOCAB_DB.length;
+        renderVocabTab();
+        return;
+      }
+
       const ttsBtn = e.target.closest(".vocab-tts-btn");
       if (ttsBtn) {
         speakJapanese(ttsBtn.getAttribute("data-speak"));
@@ -1423,7 +1498,8 @@
     populateFlashcardScopeSelect();
     buildFlashcardQueue();
     bindEvents();
-    refreshAllViews();
+    renderDashboard();
+    document.dispatchEvent(new CustomEvent("jlpt:refresh-quiz-scopes"));
   }
 
   document.addEventListener("DOMContentLoaded", init);
