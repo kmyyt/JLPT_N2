@@ -22,7 +22,8 @@
 
   const studyState = {
     activeTab: "dashboard",
-    // 단어장 필터/정렬/선택
+    // 단어장 필터/검색/정렬/선택
+    vocabSearchQuery: "",
     vocabExamFilter: "ALL",
     vocabStatusFilter: "ALL",
     vocabDeckFilter: "ALL",
@@ -48,7 +49,7 @@
     },
     vocab: {
       title: "단어장",
-      subtitle: "기출 필터·정렬, 3단계 암기 상태(SRS), 커스텀 단어장 관리"
+      subtitle: "통합 검색·기출 필터·정렬, 3단계 암기 상태(SRS), 커스텀 단어장 관리"
     },
     flashcard: {
       title: "플래시카드",
@@ -251,6 +252,28 @@
     document.dispatchEvent(new CustomEvent("jlpt:render-wrong-note"));
   }
 
+  function openFlashcardForWord(wordId, sourceList = null) {
+    const queueSource = Array.isArray(sourceList) && sourceList.length > 0 ? sourceList : VOCAB_DB;
+    const ids = queueSource.map((w) => w.id);
+    const foundIdx = ids.findIndex((id) => sameWordId(id, wordId));
+
+    if (foundIdx >= 0) {
+      studyState.flashcardQueue = ids;
+      studyState.flashcardIndex = foundIdx;
+    } else {
+      studyState.flashcardQueue = VOCAB_DB.map((w) => w.id);
+      const fallbackIdx = studyState.flashcardQueue.findIndex((id) => sameWordId(id, wordId));
+      studyState.flashcardIndex = fallbackIdx >= 0 ? fallbackIdx : 0;
+    }
+
+    studyState.flashcardFlipped = false;
+    studyState.activeKanjiChar = null;
+    const scratchEl = document.getElementById("fc-scratchpad-input");
+    if (scratchEl) scratchEl.value = "";
+
+    switchTab("flashcard");
+  }
+
   // =========================================================
   // 1) 대시보드 렌더링 & 커스텀 단어장 / JSON 백업·복원·초기화
   // =========================================================
@@ -417,7 +440,6 @@
       sortedTags.map((t) => `<option value="${escapeHtml(t)}">${escapeHtml(t)}</option>`).join("");
   }
 
-  // 플래시카드 학습 범위 셀렉트 (기본 필터 + 카테고리/기출분류 + 커스텀 단어장)
   function populateFlashcardScopeSelect() {
     const selectEl = document.getElementById("flashcard-scope-select");
     if (!selectEl) return;
@@ -460,10 +482,28 @@
   }
 
   // =========================================================
-  // 2) 단어장 탭 렌더링 및 인터랙션
+  // 2) 단어장 탭 렌더링 및 인터랙션 (통합 검색 + 플래시카드 이동)
   // =========================================================
   function getFilteredAndSortedVocab() {
     let items = VOCAB_DB.slice();
+
+    const query = String(studyState.vocabSearchQuery || "").trim().toLowerCase();
+    if (query) {
+      items = items.filter((w) => {
+        const memo = appState.posNotes?.[w.id] ?? appState.posNotes?.[String(w.id)] ?? "";
+        const targets = [
+          w.word,
+          w.kana,
+          w.meaning,
+          w.pos,
+          w.category,
+          memo,
+          Array.isArray(w.examTags) ? w.examTags.join(" ") : "",
+          Array.isArray(w.synonyms) ? w.synonyms.join(" ") : ""
+        ];
+        return targets.some((val) => String(val || "").toLowerCase().includes(query));
+      });
+    }
 
     if (studyState.vocabExamFilter !== "ALL") {
       items = items.filter(
@@ -515,8 +555,13 @@
     const countLabel = document.getElementById("vocab-result-count");
     const selectedBadge = document.getElementById("vocab-selected-count");
     const selectAllCb = document.getElementById("vocab-select-all");
+    const searchInput = document.getElementById("vocab-search-input");
 
-    if (countLabel) countLabel.textContent = `총 ${list.length}개 단어`;
+    if (searchInput && searchInput.value !== studyState.vocabSearchQuery) {
+      searchInput.value = studyState.vocabSearchQuery;
+    }
+
+    if (countLabel) countLabel.textContent = `총 ${list.length}개 단어 (단어 클릭 시 플래시카드로 이동)`;
     if (selectedBadge) selectedBadge.textContent = `${studyState.vocabSelectedIds.size}개 선택됨`;
 
     if (selectAllCb) {
@@ -783,7 +828,6 @@
     const backEl = document.getElementById("flashcard-back");
     if (!cardEl || !frontEl || !backEl) return;
 
-    // 카드 갱신 시 채점 없는 간단 메모란 초기화
     const scratchEl = document.getElementById("fc-scratchpad-input");
     if (scratchEl && !studyState.flashcardFlipped) {
       scratchEl.value = "";
@@ -1150,7 +1194,19 @@
       if (statusMsg) statusMsg.textContent = "모든 학습 데이터가 초기화되었습니다.";
     });
 
-    // 단어장 필터·정렬·선택 이벤트
+    // 단어장 통합 검색·필터·정렬·선택·플래시카드 이동 이벤트
+    document.getElementById("vocab-search-input")?.addEventListener("input", (e) => {
+      studyState.vocabSearchQuery = e.target.value;
+      renderVocabTab();
+    });
+
+    document.getElementById("btn-vocab-search-clear")?.addEventListener("click", () => {
+      studyState.vocabSearchQuery = "";
+      const input = document.getElementById("vocab-search-input");
+      if (input) input.value = "";
+      renderVocabTab();
+    });
+
     document.getElementById("vocab-exam-filter")?.addEventListener("change", (e) => {
       studyState.vocabExamFilter = e.target.value;
       renderVocabTab();
@@ -1237,6 +1293,16 @@
           setTimeout(() => {
             memoBtn.textContent = "메모 저장";
           }, 900);
+        }
+        return;
+      }
+
+      const cardEl = e.target.closest(".vocab-item");
+      if (cardEl) {
+        if (e.target.closest("input, button, select, textarea, .maskable")) return;
+        const wordId = normalizeWordId(cardEl.getAttribute("data-word-id"));
+        if (wordId !== undefined && wordId !== null && wordId !== "") {
+          openFlashcardForWord(wordId, getFilteredAndSortedVocab());
         }
       }
     });
